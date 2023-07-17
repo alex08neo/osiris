@@ -9,9 +9,7 @@ Version: 5.5.0
 import json
 import os
 from typing import Callable, TypeVar
-
 from discord.ext import commands
-
 from exceptions import *
 from helpers import db_manager
 
@@ -34,6 +32,17 @@ def is_owner() -> Callable[[T], T]:
 
     return commands.check(predicate)
 
+def is_server_admin() -> Callable[[T], T]:
+    """
+    This is a custom check to see if the user executing the command is an admin of the server.
+    """
+
+    async def predicate(context: commands.Context) -> bool:
+        if not context.author.guild_permissions.administrator:
+            raise UserNotServerAdmin
+        return True
+
+    return commands.check(predicate)
 
 def not_blacklisted() -> Callable[[T], T]:
     """
