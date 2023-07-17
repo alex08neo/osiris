@@ -80,8 +80,12 @@ async def set_channel(server_id: int, channel_id: int) -> None:
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO channels(server_id, channel_id) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO channels(server_id, channel_id) VALUES (?, ?)",
             (server_id, channel_id),
+        )
+        await db.execute(
+            "UPDATE channels SET channel_id=? WHERE server_id=?",
+            (channel_id, server_id),
         )
         await db.commit()
 
