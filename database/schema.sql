@@ -8,3 +8,9 @@ CREATE TABLE IF NOT EXISTS `channels` (
   `channel_id` varchar(20) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS `models` (
+  `server_id` varchar(20) NOT NULL,
+  `model` varchar(20) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

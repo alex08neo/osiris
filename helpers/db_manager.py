@@ -103,3 +103,35 @@ async def get_channel(server_id: int) -> int:
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
+        
+async def set_model(server_id: int, model: str) -> None:
+    """
+    This function will set the model for a server.
+
+    :param server_id: The ID of the server.
+    :param model: The model.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO models(server_id, model) VALUES (?, ?)",
+            (server_id, model),
+        )
+        await db.execute(
+            "UPDATE models SET model=? WHERE server_id=?",
+            (model, server_id),
+        )
+        await db.commit()
+
+async def get_model(server_id: int) -> str:
+    """
+    This function will get the model for a server.
+
+    :param server_id: The ID of the server.
+    :return: The model.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT model FROM models WHERE server_id=?", (server_id,)
+        ) as cursor:
+            result = await cursor.fetchone()
+            return result[0] if result is not None else None
