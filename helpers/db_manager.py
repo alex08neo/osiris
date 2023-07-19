@@ -135,3 +135,64 @@ async def get_model(server_id: int) -> str:
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
+
+async def opt_in(guild_id: int) -> None:
+    """
+    This function will opt a server in to conversation data collection.
+
+    :param guild_id: The ID of the server.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO opt(guild_id, opt) VALUES (?, ?)",
+            (guild_id, 1),
+        )
+        await db.execute(
+            "UPDATE opt SET opt=? WHERE guild_id=?",
+            (1, guild_id),
+        )
+        await db.commit()
+
+async def opt_out(guild_id: int) -> None:
+    """
+    This function will opt a server out of conversation data collection, then wipe data collected from that server.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO opt(guild_id, opt) VALUES (?, ?)",
+            (guild_id, 0),
+        )
+        await db.execute(
+            "UPDATE opt SET opt=? WHERE guild_id=?",
+            (0, guild_id),
+        )
+        await db.execute(
+            "DELETE FROM messages WHERE guild_id=?",
+            (guild_id,),
+        )
+        await db.commit()
+
+async def get_opt(guild_id: int) -> int:
+    """
+    This function will get the opt status for a server.
+
+    :param guild_id: The ID of the server.
+    :return: The opt status.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT opt FROM opt WHERE guild_id=?", (guild_id,)
+        ) as cursor:
+            result = await cursor.fetchone()
+            return result[0] if result is not None else None
+
+async def add_message(guild_id: int, author_id: int, channel_id: int, content: str) -> None:
+    """
+    This function will add a message to the database.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT INTO messages(guild_id, author_id, channel_id, content) VALUES (?, ?, ?, ?)",
+            (guild_id, author_id, channel_id, content),
+        )
+        await db.commit()

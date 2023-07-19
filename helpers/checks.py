@@ -38,9 +38,10 @@ def is_server_admin() -> Callable[[T], T]:
     """
 
     async def predicate(context: commands.Context) -> bool:
-        if not context.author.guild_permissions.administrator:
-            raise UserNotServerAdmin
-        return True
+        # we'll also make bot owners server admins for the purposes of this check
+        if context.author.guild_permissions.administrator or context.author.id in context.bot.config["owners"]:
+            return True
+        raise UserNotServerAdmin
 
     return commands.check(predicate)
 
