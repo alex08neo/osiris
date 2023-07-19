@@ -1,24 +1,9 @@
-""""
-Copyright © Krypton 2019-2023 - https://github.com/kkrypt0nn (https://krypton.ninja)
-Description:
-🐍 A simple template to start to code your own and personalized discord bot in Python programming language.
-
-Version: 5.5.0
-"""
-
 import os
 import aiosqlite
 
 DATABASE_PATH = f"{os.path.realpath(os.path.dirname(__file__))}/../database/database.db"
 
-
 async def get_blacklisted_users() -> list:
-    """
-    This function will return the list of all blacklisted users.
-
-    :param user_id: The ID of the user that should be checked.
-    :return: True if the user is blacklisted, False if not.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
             "SELECT user_id, strftime('%s', created_at) FROM blacklist"
@@ -26,14 +11,7 @@ async def get_blacklisted_users() -> list:
             result = await cursor.fetchall()
             return result
 
-
 async def is_blacklisted(user_id: int) -> bool:
-    """
-    This function will check if a user is blacklisted.
-
-    :param user_id: The ID of the user that should be checked.
-    :return: True if the user is blacklisted, False if not.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
             "SELECT * FROM blacklist WHERE user_id=?", (user_id,)
@@ -41,13 +19,7 @@ async def is_blacklisted(user_id: int) -> bool:
             result = await cursor.fetchone()
             return result is not None
 
-
 async def add_user_to_blacklist(user_id: int) -> int:
-    """
-    This function will add a user based on its ID in the blacklist.
-
-    :param user_id: The ID of the user that should be added into the blacklist.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("INSERT INTO blacklist(user_id) VALUES (?)", (user_id,))
         await db.commit()
@@ -56,13 +28,7 @@ async def add_user_to_blacklist(user_id: int) -> int:
             result = await cursor.fetchone()
             return result[0] if result is not None else 0
 
-
 async def remove_user_from_blacklist(user_id: int) -> int:
-    """
-    This function will remove a user based on its ID from the blacklist.
-
-    :param user_id: The ID of the user that should be removed from the blacklist.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("DELETE FROM blacklist WHERE user_id=?", (user_id,))
         await db.commit()
@@ -71,99 +37,81 @@ async def remove_user_from_blacklist(user_id: int) -> int:
             result = await cursor.fetchone()
             return result[0] if result is not None else 0
 
-async def set_channel(server_id: int, channel_id: int) -> None:
-    """
-    This function will set the channel where the bot speaks for a server.
-
-    :param server_id: The ID of the server.
-    :param channel_id: The ID of the channel.
-    """
+async def set_channel(guild_id: int, channel_id: int) -> None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO channels(server_id, channel_id) VALUES (?, ?)",
-            (server_id, channel_id),
+            "INSERT OR IGNORE INTO guilds(guild_id, channel_id) VALUES (?, ?)",
+            (guild_id, channel_id),
         )
         await db.execute(
-            "UPDATE channels SET channel_id=? WHERE server_id=?",
-            (channel_id, server_id),
+            "UPDATE guilds SET channel_id=? WHERE guild_id=?",
+            (channel_id, guild_id),
         )
         await db.commit()
 
-
-async def get_channel(server_id: int) -> int:
+async def get_channel(guild_id: int) -> int:
     """
-    This function will get the channel where the bot speaks for a server.
-
-    :param server_id: The ID of the server.
-    :return: The ID of the channel.
+    Returns the channel ID where the bot will send the messages.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT channel_id FROM channels WHERE server_id=?", (server_id,)
+            "SELECT channel_id FROM guilds WHERE guild_id=?", (guild_id,)
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
-        
-async def set_model(server_id: int, model: str) -> None:
-    """
-    This function will set the model for a server.
 
-    :param server_id: The ID of the server.
-    :param model: The model.
+async def set_model(guild_id: int, model: str) -> None:
+    """
+    Sets the model for the guild.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO models(server_id, model) VALUES (?, ?)",
-            (server_id, model),
+            "INSERT OR IGNORE INTO guilds(guild_id, model) VALUES (?, ?)",
+            (guild_id, model),
         )
         await db.execute(
-            "UPDATE models SET model=? WHERE server_id=?",
-            (model, server_id),
+            "UPDATE guilds SET model=? WHERE guild_id=?",
+            (model, guild_id),
         )
         await db.commit()
 
-async def get_model(server_id: int) -> str:
+async def get_model(guild_id: int) -> str:
     """
-    This function will get the model for a server.
-
-    :param server_id: The ID of the server.
-    :return: The model.
+    Returns the model for the guild.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT model FROM models WHERE server_id=?", (server_id,)
+            "SELECT model FROM guilds WHERE guild_id=?", (guild_id,)
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
 
 async def opt_in(guild_id: int) -> None:
     """
-    This function will opt a server in to conversation data collection.
-
-    :param guild_id: The ID of the server.
+    Opts the selected guild into conversation logging.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO opt(guild_id, opt) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO guilds(guild_id, opt) VALUES (?, ?)",
             (guild_id, 1),
         )
         await db.execute(
-            "UPDATE opt SET opt=? WHERE guild_id=?",
+            "UPDATE guilds SET opt=? WHERE guild_id=?",
             (1, guild_id),
         )
         await db.commit()
 
 async def opt_out(guild_id: int) -> None:
     """
-    This function will opt a server out of conversation data collection, then wipe data collected from that server.
+    Opts the selected guild out of conversation logging. Deletes all messages from the database as a part of this.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO opt(guild_id, opt) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO guilds(guild_id, opt) VALUES (?, ?)",
             (guild_id, 0),
         )
         await db.execute(
-            "UPDATE opt SET opt=? WHERE guild_id=?",
+            "UPDATE guilds SET opt=? WHERE guild_id=?",
             (0, guild_id),
         )
         await db.execute(
@@ -174,21 +122,18 @@ async def opt_out(guild_id: int) -> None:
 
 async def get_opt(guild_id: int) -> int:
     """
-    This function will get the opt status for a server.
-
-    :param guild_id: The ID of the server.
-    :return: The opt status.
+    Returns the opt-out status for the guild.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT opt FROM opt WHERE guild_id=?", (guild_id,)
+            "SELECT opt FROM guilds WHERE guild_id=?", (guild_id,)
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
 
 async def add_message(guild_id: int, author_id: int, channel_id: int, content: str) -> None:
     """
-    This function will add a message to the database.
+    Adds a message to the database.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
