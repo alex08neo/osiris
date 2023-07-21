@@ -141,3 +141,24 @@ async def add_message(guild_id: int, author_id: int, channel_id: int, content: s
             (guild_id, author_id, channel_id, content),
         )
         await db.commit()
+
+async def get_messages(guild_id: int) -> list:
+    """
+    Returns all messages for the guild.
+
+    CREATE TABLE IF NOT EXISTS `messages` (
+        `guild_id` varchar(20) NOT NULL,
+        `channel_id` varchar(20) NOT NULL,
+        `author_id` varchar(20) NOT NULL,
+        `content` text NOT NULL,
+        `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (`guild_id`) REFERENCES `guilds` (`guild_id`)
+    );
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT author_id, channel_id, content, strftime('%s', created_at) FROM messages WHERE guild_id=?",
+            (guild_id,),
+        ) as cursor:
+            result = await cursor.fetchall()
+            return result
