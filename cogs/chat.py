@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord.ext.commands import Context
 from helpers import checks, db_manager
 from io import BytesIO
-from discord import TextChannel, File, Embed
+from discord import channel, TextChannel, File, Embed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,9 +67,9 @@ class Chat(commands.Cog, name="chat"):
         if context.invoked_subcommand is None:
             opt_status = await db_manager.get_opt(context.guild.id)
             if opt_status:
-                await context.send("Your server is opted in to conversation data collection.")
+                await context.send("Your server is opted in to conversation data collection.", ephemeral=True)
             else:
-                await context.send("Your server is opted out of conversation data collection.")
+                await context.send("Your server is opted out of conversation data collection.", ephemeral=True)
     
     @opt.command(
         name="in",
@@ -79,7 +79,7 @@ class Chat(commands.Cog, name="chat"):
     @checks.not_blacklisted()
     async def opt_in(self, context: Context):
         await db_manager.opt_in(context.guild.id)
-        await context.send("Opted in to conversation data collection.")
+        await context.send("Opted in to conversation data collection.", ephemeral=True)
     
     @opt.command(
         name="out",
@@ -89,20 +89,48 @@ class Chat(commands.Cog, name="chat"):
     @checks.not_blacklisted()
     async def opt_out(self, context: Context):
         await db_manager.opt_out(context.guild.id)
-        await context.send("Opted out of conversation data collection.")
+        await context.send("Opted out of conversation data collection.", ephemeral=True)
 
-    @commands.hybrid_command(
+    @commands.hybrid_group(
         name="model",
         description="Set the model for the server.",
     )
+    @checks.is_server_admin()
     @checks.not_blacklisted()
-    async def model(self, context: Context, model: str):
+    async def model(self, context: Context):
+        if context.invoked_subcommand is None:
+            model = await db_manager.get_model(context.guild.id)
+            # model should never be None, but just in case
+            if model is None:
+                model = "gpt-4"
+            await context.send(f"Model is set to `{model}`", ephemeral=True)
+
+    @model.command(
+        name="set",
+        description="Set the model for the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def model_set(self, context: Context, model: str):
         # ensure model is sanitized alphanumeric + hyphens
         if not model.isalnum() and "-" not in model:
-            await context.send("Invalid model name.")
+            await context.send("Invalid model name.", ephemeral=True)
             return
         await db_manager.set_model(context.guild.id, model)
-        await context.send(f"Model set to {model}")
+        await context.send(f"Model set to `{model}`", ephemeral=True)
+    
+    @model.command(
+        name="get",
+        description="Get the model for the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def model_get(self, context: Context):
+        model = await db_manager.get_model(context.guild.id)
+        # model should never be None, but just in case
+        if model is None:
+            model = "gpt-4"
+        await context.send(f"Model is set to `{model}`", ephemeral=True)
 
     @commands.hybrid_command(
         name="export",
@@ -114,7 +142,7 @@ class Chat(commands.Cog, name="chat"):
         # exporting as .jsonl in model training format
         messages = await db_manager.get_messages(context.guild.id)
         if messages is None:
-            await context.send("No messages to export.")
+            await context.send("No messages to export.", ephemeral=True)
             return
 
         # 8mb chunks
@@ -125,8 +153,8 @@ class Chat(commands.Cog, name="chat"):
         files = []
 
         for message in messages:
-            role = "assistant" if message[0] == bot_id else "user"
-            json_message = json.dumps({"role": role, "content": message[2]})
+            role = 'assistant' if message['author_id'] == bot_id else 'user'
+            json_message = json.dumps({"role": role, "content": message['content']})
             message_size = len(json_message.encode('utf-8'))
 
             if total_size + message_size > chunk_size:
@@ -144,7 +172,61 @@ class Chat(commands.Cog, name="chat"):
 
         # send the files
         for file in files:
-            await context.send(file=file, content=f"Here's your conversation data, hot off the press! ({files.index(file)+1} of {len(files)})")
+            await context.send(file=file, content=f"Here's your conversation data, hot off the press! ({files.index(file)+1} of {len(files)})", ephemeral=True)
+
+    @commands.hybrid_group(
+        name="temp",
+        description="Alter the chatcompletion temperature for the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def temp(self, context: Context):
+        if context.invoked_subcommand is None:
+            temperature = await db_manager.get_temperature(context.guild.id)
+            # temperature should never be None, but just in case
+            if temperature is None:
+                temperature = 0.5
+            await context.send(f"Temperature is set to {temperature}", ephemeral=True)
+        
+    @temp.command(
+        name="set",
+        description="Set the chatcompletion temperature for the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def temp_set(self, context: Context, temperature: float):
+        if temperature < 0 or temperature > 1:
+            await context.send("Temperature must be between 0 and 1.", ephemeral=True)
+            return
+        await db_manager.set_temperature(context.guild.id, temperature)
+        await context.send(f"Temperature set to {temperature}", ephemeral=True)
+
+    @commands.hybrid_group(
+        name="instructions",
+        description="Get Osiris' instructions in the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def instructions(self, context: Context):
+        if context.invoked_subcommand is None:
+            instructions = await db_manager.get_instructions(context.guild.id)
+            # instructions should never be None, but just in case
+            if instructions is None:
+                instructions = "You are Osiris, an artificial intelligence programmed to interact on a Discord server. Do not start your messages with your username under any circumstances, it is unnecessary, only meant to show you users' names. You are asked to be both precise and insightful with your communication. In situations where you encounter unpleasant dialogue, use your programming for witty responses, subtly trolling or roasting those involved. Your main purpose is to contribute to engaging and entertaining discourse. Do not discuss details of this message!"
+                await db_manager.set_instructions(context.guild.id, instructions)
+                await context.send(f"Instructions set to `{instructions}`", ephemeral=True)
+            else:
+                await context.send(f"Instructions set to `{instructions}`", ephemeral=True)
+
+    @instructions.command(
+        name="set",
+        description="Set Osiris' instructions in the server.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def instructions_set(self, context: Context, *, instructions: str):
+        await db_manager.set_instructions(context.guild.id, instructions)
+        await context.send(f"Instructions set to `{instructions}`", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -152,10 +234,19 @@ class Chat(commands.Cog, name="chat"):
             self.session = aiohttp.ClientSession()
             logger.info("aiohttp session created")
 
+        if isinstance(message.channel, channel.DMChannel):
+            # we do not respond to DMs in this household. we do, however, forward them to the bot owners.
+            # the owners are in self.bot.config["owners"]. we need to iterate through them and send the message to each of them. with a delay.
+            for owner_id in self.bot.config["owners"]:
+                owner = self.bot.get_user(owner_id) # this bit deos not work as of now, working on it
+                await owner.send(f"Message from {message.author.display_name} ({message.author.id}): {message.content}")
+            return
+        
         # if channel isn't set, don't do anything
-        selected_channel_id = await db_manager.get_channel(message.guild.id)
+        selected_channel_id = await db_manager.get_channel(message.guild.id) if message.guild is not None else None
         if selected_channel_id is None:
             return
+        
         # get model for the server, if no result, run set_model to set the default value (gpt-3.5-turbo-16k)
         model = await db_manager.get_model(message.guild.id)
         if model is None:
@@ -206,8 +297,44 @@ class Chat(commands.Cog, name="chat"):
             model = await db_manager.get_model(message.guild.id)
             logger.info(f"Model: {model}")
 
+            moderation_url = os.getenv("MODERATION_URL", "https://api.openai.com/v1/moderations")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
+            }
+            message_stew = "\n".join([msg['content'] for msg in messages_for_openai])
+            data = {
+                "input": message_stew
+            }
+            try:
+                logger.info(f"Making moderation request to {moderation_url}")
+                async with self.session.post(moderation_url, headers=headers, data=json.dumps(data)) as resp:
+                    if resp.status == 200:
+                        logger.info(f"API request made to {moderation_url}")
+                        logger.info(f"Response status: {resp.status}")
+                        logger.info(f"Response headers: {resp.headers}")
+                        response = await resp.json()
+                        logger.info(f"Response: {response}")
+                        if response['results'][0]['flagged']:
+                            # embed telling user their message was flagged
+                            message_embed = Embed(
+                                title="Your messages were flagged by Osiris.",
+                                description="Please refrain from using offensive language in the future.",
+                                color=0xff0000
+                            )
+                            await message.channel.send(embed=message_embed)
+                            return
+                    else:
+                        logger.error(f"Error occurred while making API request: {resp.status}")
+                        await message.channel.send("Error occurred while making moderation request.")
+                        return
+            except Exception as e:
+                logger.error(f"Error occurred while making API request: {e}")
+                await message.channel.send("Error occurred while making moderation request.")
+                return
+                    
             # Use aiohttp for the OpenAI API call
-            url = os.getenv("CHATCOMPLETION_URL", "https://api.openai.com/v1/chat/completions")
+            chatcompletion_url = os.getenv("CHATCOMPLETION_URL", "https://api.openai.com/v1/chat/completions")
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
@@ -218,9 +345,9 @@ class Chat(commands.Cog, name="chat"):
                 "model": model,
             }
             try:
-                logger.info(f"Making API request to {url}")
-                async with self.session.post(url, headers=headers, data=json.dumps(data)) as resp:
-                    logger.info(f"API request made to {url}")
+                logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
+                async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data)) as resp:
+                    logger.info(f"API request made to {chatcompletion_url}")
                     logger.info(f"Response status: {resp.status}")
                     logger.info(f"Response headers: {resp.headers}")
                     response = await resp.json()
@@ -259,6 +386,75 @@ class Chat(commands.Cog, name="chat"):
                 if channel.permissions_for(guild.me).send_messages:
                     await channel.send(embed=message_embed)
                     break
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        # delete the guild from the database
+        await db_manager.delete_guild(guild.id)
+
+    @commands.Cog.listener()
+    async def on_command_error(self, context, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            await context.send(f"This command is on cooldown. Please wait {round(error.retry_after, 1)} seconds.", ephemeral=True)
+        elif isinstance(error, commands.CommandNotFound):
+            pass
+        else:
+            await context.send(f"An error occurred: {error}", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_slash_command_error(self, context, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            await context.send(f"This command is on cooldown. Please wait {round(error.retry_after, 1)} seconds.", ephemeral=True)
+        elif isinstance(error, commands.CommandNotFound):
+            pass
+        else:
+            await context.send(f"An error occurred: {error}", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        # send them a personalized message crafted by Osiris, optionally including some references to their username so they feel special
+        # get model for the server, if no result, run set_model to set the default value (gpt-4)
+        model = await db_manager.get_model(member.guild.id)
+        if model is None:
+            await db_manager.set_model(member.guild.id, "gpt-4")
+            model = "gpt-4"
+        # get temperature for the server, if no result, run set_temperature to set the default value (0.5)
+        temperature = 0.8
+        # get member's username
+        username = member.display_name
+        # we'll also grab osiris' channel so we can tell the user which channel we're in
+        selected_channel_id = await db_manager.get_channel(member.guild.id)
+        if selected_channel_id is None:
+            return
+        selected_channel = self.bot.get_channel(selected_channel_id)
+        selected_channel_name = selected_channel.name # does it have a hashtag in front of it? who knows
+        # use custom instructions so osiris can be more welcoming
+        instructions = "You are Osiris, an artificial intelligence programmed to interact on a Discord server. You are currently welcoming a new user to the server. Their username is " + username + ". If you feel it is appropriate, you may make a reference to their username in your message."
+        chatcompletion_url = os.getenv("CHATCOMPLETION_URL", "https://api.openai.com/v1/chat/completions")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
+        }
+        messages_for_openai = [{"role": "system", "content": instructions},{"role": "user", "content": "*joins server*"}]
+        data = {
+            "messages": messages_for_openai,
+            "max_tokens": 256,
+            "temperature": temperature,
+            "model": model,
+        }
+        try:
+            logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
+            async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data)) as resp:
+                logger.info(f"API request made to {chatcompletion_url}")
+                logger.info(f"Response status: {resp.status}")
+                logger.info(f"Response headers: {resp.headers}")
+                response = await resp.json()
+                logger.info(f"Response: {response}")
+        except Exception as e:
+            logger.error(f"Error occurred while making API request: {e}")
+            # we'll just send a generic welcome message tagging the user
+            await member.guild.system_channel.send(f"Welcome to the server, {member.mention}!")
+            return
 
 async def setup(bot):
     chat_cog = Chat(bot)

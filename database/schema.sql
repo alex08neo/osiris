@@ -1,8 +1,10 @@
 CREATE TABLE IF NOT EXISTS `guilds` (
   `guild_id` varchar(20) NOT NULL,
   `channel_id` varchar(20),
-  `model` varchar(20) DEFAULT 'gpt-3.5-turbo-16k',
+  `model` varchar(20) DEFAULT 'gpt-4',
   `opt` int(1) DEFAULT 1,
+  `temperature` float(2,1) DEFAULT 0.5,
+  `instructions` text DEFAULT 'You are Osiris, an AI chatbot in a Discord server.',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`guild_id`)
 );

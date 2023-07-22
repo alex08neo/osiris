@@ -85,6 +85,58 @@ async def get_model(guild_id: int) -> str:
         ) as cursor:
             result = await cursor.fetchone()
             return result[0] if result is not None else None
+        
+async def set_temperature(guild_id: int, temperature: float) -> None:
+    """
+    Sets the temperature for the guild.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO guilds(guild_id, temperature) VALUES (?, ?)",
+            (guild_id, temperature),
+        )
+        await db.execute(
+            "UPDATE guilds SET temperature=? WHERE guild_id=?",
+            (temperature, guild_id),
+        )
+        await db.commit()
+
+async def get_temperature(guild_id: int) -> float:
+    """
+    Returns the temperature for the guild.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT temperature FROM guilds WHERE guild_id=?", (guild_id,)
+        ) as cursor:
+            result = await cursor.fetchone()
+            return result[0] if result is not None else None
+        
+async def get_instructions(guild_id: int) -> str:
+    """
+    Returns the system message for the guild.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT instructions FROM guilds WHERE guild_id=?", (guild_id,)
+        ) as cursor:
+            result = await cursor.fetchone()
+            return result[0] if result is not None else None
+        
+async def set_instructions(guild_id: int, instructions: str) -> None:
+    """
+    Sets the system message for the guild.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO guilds(guild_id, instructions) VALUES (?, ?)",
+            (guild_id, instructions),
+        )
+        await db.execute(
+            "UPDATE guilds SET instructions=? WHERE guild_id=?",
+            (instructions, guild_id),
+        )
+        await db.commit()
 
 async def opt_in(guild_id: int) -> None:
     """
@@ -157,8 +209,8 @@ async def get_messages(guild_id: int) -> list:
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT author_id, channel_id, content, strftime('%s', created_at) FROM messages WHERE guild_id=?",
+            "SELECT author_id, content FROM messages WHERE guild_id=?",
             (guild_id,),
         ) as cursor:
-            result = await cursor.fetchall()
+            result = [dict(row) for row in await cursor.fetchall()]
             return result
