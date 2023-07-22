@@ -411,52 +411,6 @@ class Chat(commands.Cog, name="chat"):
         else:
             await context.send(f"An error occurred: {error}", ephemeral=True)
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        # send them a personalized message crafted by Osiris, optionally including some references to their username so they feel special
-        # get model for the server, if no result, run set_model to set the default value (gpt-4)
-        model = await db_manager.get_model(member.guild.id)
-        if model is None:
-            await db_manager.set_model(member.guild.id, "gpt-4")
-            model = "gpt-4"
-        # get temperature for the server, if no result, run set_temperature to set the default value (0.5)
-        temperature = 0.8
-        # get member's username
-        username = member.display_name
-        # we'll also grab osiris' channel so we can tell the user which channel we're in
-        selected_channel_id = await db_manager.get_channel(member.guild.id)
-        if selected_channel_id is None:
-            return
-        selected_channel = self.bot.get_channel(selected_channel_id)
-        selected_channel_name = selected_channel.name # does it have a hashtag in front of it? who knows
-        # use custom instructions so osiris can be more welcoming
-        instructions = "You are Osiris, an artificial intelligence programmed to interact on a Discord server. You are currently welcoming a new user to the server. Their username is " + username + ". If you feel it is appropriate, you may make a reference to their username in your message."
-        chatcompletion_url = os.getenv("CHATCOMPLETION_URL", "https://api.openai.com/v1/chat/completions")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
-        }
-        messages_for_openai = [{"role": "system", "content": instructions},{"role": "user", "content": "*joins server*"}]
-        data = {
-            "messages": messages_for_openai,
-            "max_tokens": 256,
-            "temperature": temperature,
-            "model": model,
-        }
-        try:
-            logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
-            async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data)) as resp:
-                logger.info(f"API request made to {chatcompletion_url}")
-                logger.info(f"Response status: {resp.status}")
-                logger.info(f"Response headers: {resp.headers}")
-                response = await resp.json()
-                logger.info(f"Response: {response}")
-        except Exception as e:
-            logger.error(f"Error occurred while making API request: {e}")
-            # we'll just send a generic welcome message tagging the user
-            await member.guild.system_channel.send(f"Welcome to the server, {member.mention}!")
-            return
-
 async def setup(bot):
     chat_cog = Chat(bot)
     await bot.add_cog(chat_cog)
