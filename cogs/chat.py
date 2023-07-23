@@ -118,7 +118,7 @@ class Chat(commands.Cog, name="chat"):
                     messages_for_openai.append({"role": role, "content": msg.content})
             model = await db_manager.get_model(message.guild.id)
             logger.info(f"Model: {model}")
-            
+
             # Make a moderation request to OpenAI API
             moderation_url = os.getenv("MODERATION_URL", "https://api.openai.com/v1/moderations")
             headers = {
@@ -166,17 +166,23 @@ class Chat(commands.Cog, name="chat"):
                 "max_tokens": 512,
                 "model": model,
             }
-            try:
-                logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
-                async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data)) as resp:
-                    logger.info(f"API request made to {chatcompletion_url}")
-                    logger.info(f"Response status: {resp.status}")
-                    logger.info(f"Response headers: {resp.headers}")
-                    response = await resp.json()
-                    logger.info(f"Response: {response}")
-            except Exception as e:
-                logger.error(f"Error occurred while making API request: {e}")
-                return
+            for i in range(3):  # Retry up to 3 times
+                try:
+                    logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
+                    async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data), timeout=20) as resp:  # Timeout after 20 seconds
+                        logger.info(f"API request made to {chatcompletion_url}")
+                        logger.info(f"Response status: {resp.status}")
+                        logger.info(f"Response headers: {resp.headers}")
+                        response = await resp.json()
+                        logger.info(f"Response: {response}")
+                        break
+                except Exception as e:
+                    if i < 2:  # If not the last retry
+                        logger.warning(f"Error occurred while making API request, retrying: {e}")
+                        continue
+                    else:  # If last retry
+                        logger.error(f"Error occurred while making API request: {e}")
+                        return
 
             # Send the response to the channel
             if len(response['choices'][0]['message']['content']) < 2000:
@@ -212,26 +218,6 @@ class Chat(commands.Cog, name="chat"):
     async def on_guild_remove(self, guild):
         """Delete the guild from the database when the bot leaves a guild."""
         await db_manager.delete_guild(guild.id)
-
-    @commands.Cog.listener()
-    async def on_command_error(self, context, error):
-        """Handle command errors."""
-        if isinstance(error, commands.CommandOnCooldown):
-            await context.send(f"This command is on cooldown. Please wait {round(error.retry_after, 1)} seconds.", ephemeral=True)
-        elif isinstance(error, commands.CommandNotFound):
-            pass
-        else:
-            await context.send(f"An error occurred: {error}", ephemeral=True)
-
-    @commands.Cog.listener()
-    async def on_slash_command_error(self, context, error):
-        """Handle slash command errors."""
-        if isinstance(error, commands.CommandOnCooldown):
-            await context.send(f"This command is on cooldown. Please wait {round(error.retry_after, 1)} seconds.", ephemeral=True)
-        elif isinstance(error, commands.CommandNotFound):
-            pass
-        else:
-            await context.send(f"An error occurred: {error}", ephemeral=True)
 
 async def setup(bot):
     chat_cog = Chat(bot)
