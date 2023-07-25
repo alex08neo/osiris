@@ -1,4 +1,6 @@
 import json
+import os
+import asyncio, aiohttp
 from discord.ext import commands
 from discord.ext.commands import Context
 from discord import TextChannel, File, Embed
@@ -21,7 +23,6 @@ class ChatCommands(commands.Cog, name="chat_commands"):
             embed = Embed(title="Osiris Help", description="Osiris is a chatbot that can be used to generate text in a conversation. It is trained on a large corpus of text from the internet, and can be used to generate text in a variety of styles.")
             # create embed fields for each command
             embed.add_field(name="osiris help", value="Show this message.", inline=False)
-            embed.add_field(name="osiris retry", value="Retry sending messages to Osiris.", inline=False)
             embed.add_field(name="osiris channel", value="Set the channel where the bot speaks.", inline=False)
             embed.add_field(name="osiris new", value="Start a new conversation.", inline=False)
             embed.add_field(name="osiris opt get", value="Get the conversation data collection status for your server.", inline=False)
@@ -38,13 +39,31 @@ class ChatCommands(commands.Cog, name="chat_commands"):
             await context.send(embed=embed)
 
     @osiris.command(
-        name="retry",
-        description="Retry the last command.",
+        name="help",
+        description="Show the help message.",
     )
     @checks.is_server_admin()
     @checks.not_blacklisted()
-    async def retry(self, context: Context):
-        await self.bot.get_cog("Chat").wait_and_respond(context.message)
+    async def help(self, context: Context):
+        # construct an embed with help info
+        embed = Embed(title="Osiris Help", description="Osiris is a chatbot that can be used to generate text in a conversation. It is trained on a large corpus of text from the internet, and can be used to generate text in a variety of styles.")
+        # create embed fields for each command
+        embed.add_field(name="osiris help", value="Show this message.", inline=False)
+        embed.add_field(name="osiris retry", value="Retry sending messages to Osiris.", inline=False)
+        embed.add_field(name="osiris channel", value="Set the channel where the bot speaks.", inline=False)
+        embed.add_field(name="osiris new", value="Start a new conversation.", inline=False)
+        embed.add_field(name="osiris opt get", value="Get the conversation data collection status for your server.", inline=False)
+        embed.add_field(name="osiris opt in", value="Opt your server in to conversation data collection.", inline=False)
+        embed.add_field(name="osiris opt out", value="Opt your server out of conversation data collection.", inline=False)
+        embed.add_field(name="osiris model set", value="Set the model for the server.", inline=False)
+        embed.add_field(name="osiris model get", value="Get the model for the server.", inline=False)
+        embed.add_field(name="osiris export", value="Export conversation data for the server.", inline=False)
+        embed.add_field(name="osiris temp get", value="Get the chatcompletion temperature for the server.", inline=False)
+        embed.add_field(name="osiris temp set", value="Set the chatcompletion temperature for the server.", inline=False)
+        embed.add_field(name="osiris instructions get", value="Get Osiris' instructions in the server.", inline=False)
+        embed.add_field(name="osiris instructions set", value="Set Osiris' instructions in the server.", inline=False)
+        # send the embed
+        await context.send(embed=embed)
 
     @osiris.command(
         name="channel",
@@ -248,6 +267,42 @@ class ChatCommands(commands.Cog, name="chat_commands"):
             await context.send(f"Instructions set to `{instructions}`", ephemeral=True)
         else:
             await context.send(f"Instructions set to `{instructions}`", ephemeral=True)
+
+    @osiris.command(
+        name="clean",
+        description="Clean up inappropriate messages which Osiris is flagging.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def clean(self, context: Context):
+        session = aiohttp.ClientSession()
+        response_msg = await context.send("Cleaning up inappropriate messages...", ephemeral=True)
+        async for msg in context.channel.history(limit=30):
+            # start with a healthy nap
+            await asyncio.sleep(0.25)
+            moderation_url = os.getenv("MODERATION_URL", "https://api.openai.com/v1/moderations")
+            # construct request body
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
+            }
+            data = {
+                "input": msg.content,
+            }
+            # make request
+            async with session.post(moderation_url, headers=headers, data=json.dumps(data)) as response:
+                if response.status == 200:
+                    response = await response.json()
+                    if response['results'][0]['flagged']:
+                        await msg.delete()
+                        await response_msg.edit(content="Cleaned up inappropriate messages.", ephemeral=True)
+                        session.close()
+                        return
+                else:
+                    await context.channel.send("Error occurred while making moderation request.")
+                    session.close()
+                    return
+
 
 async def setup(bot):
     chat_commands_cog = ChatCommands(bot)

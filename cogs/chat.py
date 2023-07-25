@@ -102,7 +102,7 @@ class Chat(commands.Cog, name="chat"):
         messages = self.waiting_messages[message.guild.id]
         self.waiting_messages[message.guild.id] = []
         history = []
-        async for msg in message.channel.history(limit=20):
+        async for msg in message.channel.history(limit=30):
             if msg.author == self.bot.user and msg.content == "New conversation started!":
                 break
             history.append(msg)
@@ -113,7 +113,17 @@ class Chat(commands.Cog, name="chat"):
             for msg in reversed(messages):
                 role = "user" if msg.author != self.bot.user else "assistant"
                 if role == "user":
-                    messages_for_openai.append({"role": role, "content": msg.author.display_name + ": " + msg.content})
+                    user_content = msg.author.display_name + ": " + msg.content
+                    if msg.attachments:
+                        for attachment in msg.attachments:
+                            supported_filetypes = ["txt", "log", "py", "js", "json", "html", "css", "md", "csv", "tsv", "xml", "yaml", "yml", "ini", "cfg", "toml", "sh", "bat", "ps1", "psm1", "psd1", "ps1xml", "psc1", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql"]
+                            if attachment.filename.split(".")[-1] in supported_filetypes:
+                                attachment_content = await attachment.read() 
+                                attachment_content = attachment_content.decode("utf-8") 
+                                if len(attachment_content) > 10000:
+                                    attachment_content = attachment_content[:10000]
+                                user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
+                    messages_for_openai.append({"role": role, "content": user_content})
                 else:
                     messages_for_openai.append({"role": role, "content": msg.content})
             model = await db_manager.get_model(message.guild.id)
@@ -166,37 +176,68 @@ class Chat(commands.Cog, name="chat"):
                 "max_tokens": 512,
                 "model": model,
             }
-            for i in range(3):  # Retry up to 3 times
-                try:
-                    logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
-                    async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data), timeout=20) as resp:  # Timeout after 20 seconds
-                        logger.info(f"API request made to {chatcompletion_url}")
-                        logger.info(f"Response status: {resp.status}")
-                        logger.info(f"Response headers: {resp.headers}")
+        response_message = None
+        for i in range(3):  # Retry up to 3 times
+            try:
+                logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
+                async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data),
+                                            timeout=60) as resp:  # Timeout after 60 seconds
+                    logger.info(f"API request made to {chatcompletion_url}")
+                    logger.info(f"Response status: {resp.status}")
+                    logger.info(f"Response headers: {resp.headers}")
+                    if resp.status == 200:
                         response = await resp.json()
                         logger.info(f"Response: {response}")
                         break
-                except Exception as e:
-                    if i < 2:  # If not the last retry
-                        logger.warning(f"Error occurred while making API request, retrying: {e}")
-                        continue
-                    else:  # If last retry
-                        logger.error(f"Error occurred while making API request: {e}")
-                        return
+                    else:
+                        raise Exception(f"API request failed with status: {resp.status}")
+            except Exception as e:
+                logger.warning(f"Error occurred while making API request, retrying: {e}")
+                embed = Embed(
+                    title="Request Failed",
+                    description=f"Failed {i+1 if i < 2 else 'all'} request {'attempts' if i >= 2 else 'attempt'}",
+                    color=0xff0000
+                )
+                if response_message:
+                    await response_message.edit(embed=embed)
+                else:
+                    response_message = await message.channel.send(embed=embed)
+                if i == 2:  # If this was the last attempt, return
+                    return
+            except:
+                logger.error("An unexpected error occurred.")
+                return
 
-            # Send the response to the channel
+        # Send the response to the channel
+        try:
             if len(response['choices'][0]['message']['content']) < 2000:
-                await message.channel.send(response['choices'][0]['message']['content'])
+                if response_message:
+                    await response_message.edit(content=response['choices'][0]['message']['content'], embed=None)
+                else:
+                    response_message = await message.channel.send(response['choices'][0]['message']['content'])
             else:
                 content = response['choices'][0]['message']['content']
                 if content:
                     file_content = BytesIO(content.encode('utf-8'))
-                    await message.channel.send("Message too long, sending as attachment", file=File(file_content, filename="message.txt"))
+                    if response_message:
+                        # delete the old message
+                        await response_message.delete()
+                        await message.channel.send("Message too long, sending as attachment",
+                                                file=File(file_content, filename="message.txt"))
+                    else:
+                        response_message = await message.channel.send("Message too long, sending as attachment",
+                                                                    file=File(file_content, filename="message.txt"))
             bot_username = self.bot.user.name
             tokens_used = response['usage']['total_tokens']
             logger.info(f"Tokens used: {tokens_used} of 8192")
-            await message.guild.me.edit(nick=bot_username + " (" + str(round(round(float(tokens_used/8192), 3)*100, 1)) + "% used)")
-
+            await message.guild.me.edit(
+                nick=bot_username + " (" + str(round(round(float(tokens_used / 8192), 3) * 100, 1)) + "% used)")
+        except Exception as e:
+            logger.error(f"An error occurred in the response handling: {e}")
+            await message.channel.send("An error occurred in the response handling.")
+        except:
+            logger.error("An unexpected error occurred in the response handling.")
+            await message.channel.send("An unexpected error occurred in the response handling.")
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
         """Send a welcome message when the bot joins a guild."""
