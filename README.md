@@ -28,6 +28,10 @@ Here's how to get started with Osiris:
 
 [Installation.md](Installation.md)
 
+Alternative installation
+
+beg server owner to add Osiris
+
 ## Support
 
 Having trouble? Want to send us love letters or cookies? Join our [Discord community](https://discord.gg/FSFxZvKubE) at Cardboard Fort!
