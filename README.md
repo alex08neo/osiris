@@ -28,7 +28,7 @@ Here's how to get started with Osiris:
 
 [Installation.md](Installation.md)
 
-Alternative installation
+Alternative installation:
 
 beg server owner to add Osiris
 
