@@ -1,7 +1,7 @@
 from discord.ext import commands
 from helpers import db_manager, oai_helper
 from discord import channel, Embed
-import re
+import re, json, os, random
 
 class Chat(commands.Cog, name="chat"):
     def __init__(self, bot):
@@ -55,9 +55,27 @@ class Chat(commands.Cog, name="chat"):
                         user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
             oai_msgs.append({"role": role, "content": user_content, "name": name})
 
+        print("Debug: Loading config.json...")  # Debug print
+        with open(f"{os.path.realpath(os.path.dirname(__file__))}/../config.json") as file:
+            data = json.load(file)
+
+        if "," in data["openai_api_key"]:
+            API_KEY = data["openai_api_key"].split(",")
+        else:
+            API_KEY = data["openai_api_key"]
+
+        print(f"Debug: API_KEY loaded as: {API_KEY}")  # Debug print
+
+        API_KEY = random.choice(API_KEY) if isinstance(API_KEY, list) else API_KEY
+        print(f"Debug: Selected API_KEY: {API_KEY}")  # Debug print
+
         async with message.channel.typing():
-            assistant_message = await oai_helper.infer(oai_msgs, model, temp)
+            print("Debug: Starting typing indicator...")  # Debug print
+            assistant_message = await oai_helper.infer(oai_msgs, model, temp, API_KEY)
+            print(f"Debug: Received assistant message: {assistant_message}")  # Debug print
+            
             if isinstance(assistant_message, int):
+                print(f"Debug: An error occurred with code {assistant_message}")  # Debug print
                 error_embed = Embed(
                     title="Error!",
                     description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
@@ -67,11 +85,15 @@ class Chat(commands.Cog, name="chat"):
                 return
 
             if len(assistant_message) > 2000:
+                print("Debug: Message exceeds 2000 characters, splitting...")  # Debug print
                 parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
                 for part in parts:
+                    print(f"Debug: Sending part: {part}")  # Debug print
                     await message.channel.send(part)
             else:
+                print(f"Debug: Sending message: {assistant_message}")  # Debug print
                 await message.channel.send(assistant_message)
+
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):

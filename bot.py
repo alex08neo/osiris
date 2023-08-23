@@ -135,9 +135,19 @@ async def on_command_error(context: Context, error):
         else:
             bot.logger.error(f"An error has occurred: {type(error).__name__}: {str(error)}")
 
+async def load_cogs() -> None:
+    cogs_path = os.path.join(os.path.dirname(__file__), 'cogs')
+    for file in filter(lambda f: f.endswith(".py"), os.listdir(cogs_path)):
+        extension = file[:-3]
+        try:
+            await bot.load_extension(f"cogs.{extension}")
+            bot.logger.info(f"Loaded extension '{extension}'")
+        except Exception as e:
+            bot.logger.error(f"Failed to load extension {extension}: {type(e).__name__}: {e}")
 
 async def run():
     await init_db()
+    await load_cogs()
     await bot.start(config["token"])
 
 
