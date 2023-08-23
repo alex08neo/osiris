@@ -19,11 +19,11 @@ class ChatCommands(commands.Cog, name="chat_commands"):
     @checks.not_blacklisted()
     async def osiris(self, context: Context):
         if context.invoked_subcommand is None:
-            # construct an embed with help info
             embed = Embed(title="Osiris Help", description="Osiris is a chatbot that can be used to generate text in a conversation. It is trained on a large corpus of text from the internet, and can be used to generate text in a variety of styles.")
-            # create embed fields for each command
             embed.add_field(name="osiris help", value="Show this message.", inline=False)
-            embed.add_field(name="osiris channel", value="Set the channel where the bot speaks.", inline=False)
+            embed.add_field(name="osiris channel add", value="Add a channel where the bot speaks.", inline=False)
+            embed.add_field(name="osiris channel remove", value="Remove a channel where the bot speaks.", inline=False)
+            embed.add_field(name="osiris channel list", value="List the channels where the bot speaks.", inline=False)
             embed.add_field(name="osiris new", value="Start a new conversation.", inline=False)
             embed.add_field(name="osiris opt get", value="Get the conversation data collection status for your server.", inline=False)
             embed.add_field(name="osiris opt in", value="Opt your server in to conversation data collection.", inline=False)
@@ -35,7 +35,6 @@ class ChatCommands(commands.Cog, name="chat_commands"):
             embed.add_field(name="osiris temp set", value="Set the chatcompletion temperature for the server.", inline=False)
             embed.add_field(name="osiris instructions get", value="Get Osiris' instructions in the server.", inline=False)
             embed.add_field(name="osiris instructions set", value="Set Osiris' instructions in the server.", inline=False)
-            # send the embed
             await context.send(embed=embed)
 
     @osiris.command(
@@ -45,12 +44,11 @@ class ChatCommands(commands.Cog, name="chat_commands"):
     @checks.is_server_admin()
     @checks.not_blacklisted()
     async def help(self, context: Context):
-        # construct an embed with help info
         embed = Embed(title="Osiris Help", description="Osiris is a chatbot that can be used to generate text in a conversation. It is trained on a large corpus of text from the internet, and can be used to generate text in a variety of styles.")
-        # create embed fields for each command
         embed.add_field(name="osiris help", value="Show this message.", inline=False)
-        embed.add_field(name="osiris retry", value="Retry sending messages to Osiris.", inline=False)
-        embed.add_field(name="osiris channel", value="Set the channel where the bot speaks.", inline=False)
+        embed.add_field(name="osiris channel add", value="Add a channel where the bot speaks.", inline=False)
+        embed.add_field(name="osiris channel remove", value="Remove a channel where the bot speaks.", inline=False)
+        embed.add_field(name="osiris channel list", value="List the channels where the bot speaks.", inline=False)
         embed.add_field(name="osiris new", value="Start a new conversation.", inline=False)
         embed.add_field(name="osiris opt get", value="Get the conversation data collection status for your server.", inline=False)
         embed.add_field(name="osiris opt in", value="Opt your server in to conversation data collection.", inline=False)
@@ -62,20 +60,57 @@ class ChatCommands(commands.Cog, name="chat_commands"):
         embed.add_field(name="osiris temp set", value="Set the chatcompletion temperature for the server.", inline=False)
         embed.add_field(name="osiris instructions get", value="Get Osiris' instructions in the server.", inline=False)
         embed.add_field(name="osiris instructions set", value="Set Osiris' instructions in the server.", inline=False)
-        # send the embed
         await context.send(embed=embed)
 
-    @osiris.command(
+    @osiris.group(
         name="channel",
-        description="Set the channel where the bot speaks.",
+        description="Get or set the channels where the bot speaks.",
     )
     @checks.is_server_admin()
     @checks.not_blacklisted()
-    async def channel(self, context: Context, channel: TextChannel=None):
+    async def channel(self, context: Context):
+        pass
+
+    @channel.command(
+        name="add",
+        description="Add a channel where the bot speaks.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def channel_add(self, context: Context, channel: TextChannel=None):
         if channel is None:
             channel = context.channel
-        await db_manager.set_channel(context.guild.id, channel.id)
-        await context.send(f"Channel set to {channel.mention}")
+        await db_manager.add_channel(str(context.guild.id), channel.id)  # Notice the change to str
+        await context.send(f"Channel added: {channel.mention}")
+
+    @channel.command(
+        name="remove",
+        description="Remove a channel where the bot speaks.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def channel_remove(self, context: Context, channel: TextChannel=None):
+        if channel is None:
+            channel = context.channel
+        await db_manager.remove_channel(str(context.guild.id), channel.id) # Notice the change to str
+        await context.send(f"Channel removed: {channel.mention}")
+
+    @channel.command(
+        name="list",
+        description="List the channels where the bot speaks.",
+    )
+    @checks.is_server_admin()
+    @checks.not_blacklisted()
+    async def channel_list(self, context: Context):
+        channels = await db_manager.get_channels(str(context.guild.id)) # Notice the change to str
+        if channels is None or all(c is None for c in channels):
+            await context.send("No channels set.", ephemeral=True)
+            return
+        channel_mentions = [
+            context.guild.get_channel(int(channel_id)).mention
+            for channel_id in channels if channel_id != ''
+        ]
+        await context.send(f"Channels where I can speak: {', '.join(channel_mentions)}")
 
     @osiris.command(
         name="new",
@@ -216,8 +251,8 @@ class ChatCommands(commands.Cog, name="chat_commands"):
     @checks.is_server_admin()
     @checks.not_blacklisted()
     async def temp_set(self, context: Context, temperature: float):
-        if temperature < 0 or temperature > 1:
-            await context.send("Temperature must be between 0 and 1.", ephemeral=True)
+        if temperature < 0 or temperature > 2:
+            await context.send("Temperature must be between 0 and 2.", ephemeral=True)
             return
         await db_manager.set_temperature(context.guild.id, temperature)
         await context.send(f"Temperature set to {temperature}", ephemeral=True)

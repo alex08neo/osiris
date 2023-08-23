@@ -1,69 +1,32 @@
-import asyncio, aiohttp, json, logging, os
 from discord.ext import commands
-from discord.ext.commands import Context
-from helpers import checks, db_manager
-from io import BytesIO
-from discord import channel, TextChannel, File, Embed
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from helpers import db_manager, oai_helper
+from discord import channel, Embed
+import re
 
 class Chat(commands.Cog, name="chat"):
     def __init__(self, bot):
         self.bot = bot
-        self.waiting_messages = {}
-        self.waiting_task = {}
-        self.session = None
-        self.is_processing = {}
-
-    async def create_session(self):
-        """Create an aiohttp session if it doesn't exist."""
-        if self.session is None:
-            self.session = aiohttp.ClientSession()
-            logger.info("aiohttp session created")
-
-    async def close_session(self):
-        """Close the aiohttp session if it exists."""
-        if self.session is not None:
-            await self.session.close()
-            self.session = None
-            logger.info("aiohttp session closed")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Create an aiohttp session when the bot is ready."""
-        await self.create_session()
-
-    @commands.Cog.listener()
-    async def on_disconnect(self):
-        """Close the aiohttp session when the bot disconnects."""
-        await self.close_session()
-
-    @commands.Cog.listener()
-    async def on_connect(self):
-        """Create an aiohttp session when the bot connects."""
-        await self.create_session()
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Handle incoming messages."""
-        if self.session is None:
-            await self.create_session()
+        """Catch a fish, make a wish, and swiftly respond to a dish... of messages, that is!"""
 
-        if isinstance(message.channel, channel.DMChannel):
-            for owner_id in self.bot.config["owners"]:
-                owner = self.bot.get_user(owner_id)
-                await owner.send(f"Message from {message.author.display_name} ({message.author.id}): {message.content}")
+        if message.author == self.bot.user or message.guild is None or isinstance(message.channel, channel.DMChannel):
             return
 
-        selected_channel_id = await db_manager.get_channel(message.guild.id) if message.guild is not None else None
-        if selected_channel_id is None:
+        selected_channel_ids = await db_manager.get_channels(str(message.guild.id))
+        if str(message.channel.id) not in selected_channel_ids:
             return
         
         model = await db_manager.get_model(message.guild.id)
         if model is None:
             await db_manager.set_model(message.guild.id, "gpt-3.5-turbo-16k")
             model = "gpt-3.5-turbo-16k"
+
+        temp = await db_manager.get_temperature(message.guild.id)
+        if temp is None:
+            await db_manager.set_temperature(message.guild.id, 0.5)
+            temp = 0.5
 
         opt_status = await db_manager.get_opt(message.guild.id)
         if opt_status is None:
@@ -73,177 +36,58 @@ class Chat(commands.Cog, name="chat"):
         if opt_status:
             await db_manager.add_message(message.guild.id, message.author.id, message.channel.id, message.content)
 
-        if message.author == self.bot.user:
-            return
-
         if await db_manager.is_blacklisted(message.author.id):
-            await message.channel.send("You dun goofed, you're on the no-fly list with Osiris Airlines.")
+            await message.delete()
+            return
 
         if message.content.startswith(self.bot.config["prefix"]):
             return
 
-        selected_channel_id = await db_manager.get_channel(message.guild.id)
-        if int(message.channel.id) != int(selected_channel_id):
-            return
-
-        if message.guild.id not in self.waiting_messages:
-            self.waiting_messages[message.guild.id] = []
-
-        self.waiting_messages[message.guild.id].insert(0, message)
-
-        if message.guild.id in self.waiting_task and not self.waiting_task[message.guild.id].done():
-            return
-
-        self.waiting_task[message.guild.id] = asyncio.create_task(self.wait_and_respond(message))
-
-    async def wait_and_respond(self, message):
-        """Wait for a few seconds and then respond to the message."""
-        await asyncio.sleep(7)
-        messages = self.waiting_messages[message.guild.id]
-        self.waiting_messages[message.guild.id] = []
         history = []
-        async for msg in message.channel.history(limit=30):
+        async for msg in message.channel.history(limit=10):
             if msg.author == self.bot.user and msg.content == "New conversation started!":
                 break
             history.append(msg)
-        messages = history + [msg for msg in messages if msg not in history]
-        async with message.channel.typing():
-            instructions = await db_manager.get_instructions(message.guild.id)
-            messages_for_openai = [{"role": "system", "content": instructions}]
-            for msg in reversed(messages):
-                role = "user" if msg.author != self.bot.user else "assistant"
-                if role == "user":
-                    user_content = msg.author.display_name + ": " + msg.content
-                    if msg.attachments:
-                        for attachment in msg.attachments:
-                            supported_filetypes = ["txt", "log", "py", "js", "json", "html", "css", "md", "csv", "tsv", "xml", "yaml", "yml", "ini", "cfg", "toml", "sh", "bat", "ps1", "psm1", "psd1", "ps1xml", "psc1", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql", "ps1xml", "pssc", "reg", "inf", "sql"]
-                            if attachment.filename.split(".")[-1] in supported_filetypes:
-                                attachment_content = await attachment.read() 
-                                attachment_content = attachment_content.decode("utf-8") 
-                                if len(attachment_content) > 10000:
-                                    attachment_content = attachment_content[:10000]
-                                user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
-                    messages_for_openai.append({"role": role, "content": user_content})
-                else:
-                    messages_for_openai.append({"role": role, "content": msg.content})
-            model = await db_manager.get_model(message.guild.id)
-            logger.info(f"Model: {model}")
 
-            # Make a moderation request to OpenAI API
-            moderation_url = os.getenv("MODERATION_URL", "https://api.openai.com/v1/moderations")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
-            }
-            message_stew = "\n".join([msg['content'] for msg in messages_for_openai])
-            data = {
-                "input": message_stew
-            }
-            try:
-                logger.info(f"Making moderation request to {moderation_url}")
-                async with self.session.post(moderation_url, headers=headers, data=json.dumps(data)) as resp:
-                    if resp.status == 200:
-                        logger.info(f"API request made to {moderation_url}")
-                        logger.info(f"Response status: {resp.status}")
-                        logger.info(f"Response headers: {resp.headers}")
-                        response = await resp.json()
-                        logger.info(f"Response: {response}")
-                        if response['results'][0]['flagged']:
-                            message_embed = Embed(
-                                title="Your messages were flagged by Osiris.",
-                                description="Please refrain from using offensive language in the future.",
-                                color=0xff0000
-                            )
-                            await message.channel.send(embed=message_embed)
-                            return
-                    else:
-                        logger.error(f"Error occurred while making API request: {resp.status}")
-                        await message.channel.send("Error occurred while making moderation request.")
-                        return
-            except Exception as e:
-                logger.error(f"Error occurred while making API request: {e}")
-                await message.channel.send("Error occurred while making moderation request.")
-                return
+        oai_msgs = [{"role": "system", "content": await db_manager.get_instructions(message.guild.id)}]
 
-            # Make a ChatCompletion request to OpenAI API
-            chatcompletion_url = os.getenv("CHATCOMPLETION_URL", "https://api.openai.com/v1/chat/completions")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.bot.config['openai_api_key']}"
-            }
-            data = {
-                "messages": messages_for_openai,
-                "max_tokens": 512,
-                "model": model,
-            }
-        response_message = None
-        for i in range(3):  # Retry up to 3 times
-            try:
-                logger.info(f"Making ChatCompletion request to {chatcompletion_url}")
-                async with self.session.post(chatcompletion_url, headers=headers, data=json.dumps(data),
-                                            timeout=60) as resp:  # Timeout after 60 seconds
-                    logger.info(f"API request made to {chatcompletion_url}")
-                    logger.info(f"Response status: {resp.status}")
-                    logger.info(f"Response headers: {resp.headers}")
-                    if resp.status == 200:
-                        response = await resp.json()
-                        logger.info(f"Response: {response}")
-                        break
-                    else:
-                        raise Exception(f"API request failed with status: {resp.status}")
-            except Exception as e:
-                logger.warning(f"Error occurred while making API request, retrying: {e}")
-                embed = Embed(
-                    title="Request Failed",
-                    description=f"Failed {i+1 if i < 2 else 'all'} request {'attempts' if i >= 2 else 'attempt'}",
-                    color=0xff0000
-                )
-                if response_message:
-                    await response_message.edit(embed=embed)
-                else:
-                    response_message = await message.channel.send(embed=embed)
-                if i == 2:  # If this was the last attempt, return
-                    return
-            except:
-                logger.error("An unexpected error occurred.")
-                return
+        supported_filetypes = ["txt", "log", "py", "js", "json", "html", "css", "md", "csv", "tsv", "xml", "yaml", "yml", "ini", "cfg", "toml", "sh", "bat", "ps1", "psm1", "psd1", "ps1xml", "psc1", "pssc", "reg", "inf", "sql"]
 
-        # Send the response to the channel
-        try:
-            if len(response['choices'][0]['message']['content']) < 2000:
-                if response_message:
-                    await response_message.edit(content=response['choices'][0]['message']['content'], embed=None)
-                else:
-                    response_message = await message.channel.send(response['choices'][0]['message']['content'])
-            else:
-                content = response['choices'][0]['message']['content']
-                if content:
-                    file_content = BytesIO(content.encode('utf-8'))
-                    if response_message:
-                        # delete the old message
-                        await response_message.delete()
-                        await message.channel.send("Message too long, sending as attachment",
-                                                file=File(file_content, filename="message.txt"))
-                    else:
-                        response_message = await message.channel.send("Message too long, sending as attachment",
-                                                                    file=File(file_content, filename="message.txt"))
-            bot_username = self.bot.user.name
-            tokens_used = response['usage']['total_tokens']
-            logger.info(f"Tokens used: {tokens_used} of 8192")
-            await message.guild.me.edit(
-                nick=bot_username + " (" + str(round(round(float(tokens_used / 8192), 3) * 100, 1)) + "% used)")
-        except Exception as e:
-            logger.error(f"An error occurred in the response handling: {e}")
-            await message.channel.send("An error occurred in the response handling.")
-        except:
-            logger.error("An unexpected error occurred in the response handling.")
-            await message.channel.send("An unexpected error occurred in the response handling.")
+        for msg in reversed(history):
+            role = "user" if msg.author != self.bot.user else "assistant"
+            name = re.sub(r"[^a-zA-Z0-9]", "", msg.author.display_name)
+            user_content = msg.content
+            if msg.attachments:
+                for attachment in msg.attachments:
+                    if attachment.filename.split(".")[-1] in supported_filetypes:
+                        attachment_content = await attachment.read()
+                        attachment_content = attachment_content.decode("utf-8")
+                        if len(attachment_content) > 10000:
+                            attachment_content = attachment_content[:10000]
+                        user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
+            oai_msgs.append({"role": role, "content": user_content, "name": name})
+
+        assistant_message = await oai_helper.infer(oai_msgs, model, temp)
+        if isinstance(assistant_message, int):
+            error_embed = Embed(
+                title="Error!",
+                description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
+                color=0xff0000
+            )
+
+        if len(assistant_message) > 2000:
+            parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
+            for part in parts:
+                await message.channel.send(part)
+        else:
+            await message.channel.send(assistant_message)
+
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
         """Send a welcome message when the bot joins a guild."""
         message_embed = Embed(
             title="Welcome to Osiris!",
-            description="To get started, use the `/channel` command in the channel you want Osiris to speak in.",
+            description="To get started, use the `/osiris channel add` command in the channel you want Osiris to speak in.",
             color=0x00ff00
         )
 

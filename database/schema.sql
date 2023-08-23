@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS `guilds` (
   `guild_id` varchar(20) NOT NULL,
-  `channel_id` varchar(20),
+  `channels` text DEFAULT '',
   `model` varchar(20) DEFAULT 'gpt-4',
   `opt` int(1) DEFAULT 1,
   `temperature` float(2,1) DEFAULT 0.5,

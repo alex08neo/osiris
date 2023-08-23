@@ -37,28 +37,45 @@ async def remove_user_from_blacklist(user_id: int) -> int:
             result = await cursor.fetchone()
             return result[0] if result is not None else 0
 
-async def set_channel(guild_id: int, channel_id: int) -> None:
+async def add_channel(guild_id: int, channel_id: int) -> None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO guilds(guild_id, channel_id) VALUES (?, ?)",
-            (guild_id, channel_id),
-        )
-        await db.execute(
-            "UPDATE guilds SET channel_id=? WHERE guild_id=?",
-            (channel_id, guild_id),
-        )
+        async with db.execute("SELECT channels FROM guilds WHERE guild_id=?", (str(guild_id),)) as cursor:
+            result = await cursor.fetchone()
+            if result is None:
+                channels = str(channel_id)
+                await db.execute(
+                    "INSERT INTO guilds(guild_id, channels) VALUES (?, ?)",
+                    (str(guild_id), channels),
+                )
+            else:
+                channels = result[0] + ',' + str(channel_id) if result[0] else str(channel_id)
+                await db.execute(
+                    "UPDATE guilds SET channels=? WHERE guild_id=?",
+                    (channels, str(guild_id)),
+                )
         await db.commit()
 
-async def get_channel(guild_id: int) -> int:
-    """
-    Returns the channel ID where the bot will send the messages.
-    """
+async def remove_channel(guild_id: int, channel_id: int) -> None:
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        async with db.execute(
-            "SELECT channel_id FROM guilds WHERE guild_id=?", (guild_id,)
-        ) as cursor:
+        async with db.execute("SELECT channels FROM guilds WHERE guild_id=?", (str(guild_id),)) as cursor:
             result = await cursor.fetchone()
-            return result[0] if result is not None else None
+            if result is None:
+                return
+            channels = result[0].split(',')
+            channels.remove(str(channel_id))
+            channels_str = ','.join(channels)
+            await db.execute(
+                "UPDATE guilds SET channels=? WHERE guild_id=?",
+                (channels_str, str(guild_id)),
+            )
+        await db.commit()
+
+async def get_channels(guild_id: int) -> list:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT channels FROM guilds WHERE guild_id=?", (str(guild_id),)) as cursor:
+            result = await cursor.fetchone()
+            return result[0].split(',') if result and result[0] else None
+
 
 async def set_model(guild_id: int, model: str) -> None:
     """
