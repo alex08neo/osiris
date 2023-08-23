@@ -55,22 +55,23 @@ class Chat(commands.Cog, name="chat"):
                         user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
             oai_msgs.append({"role": role, "content": user_content, "name": name})
 
-        assistant_message = await oai_helper.infer(oai_msgs, model, temp)
-        if isinstance(assistant_message, int):
-            error_embed = Embed(
-                title="Error!",
-                description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
-                color=0xff0000
-            )
-            await message.channel.send(embed=error_embed)
-            return
+        async with message.channel.typing():
+            assistant_message = await oai_helper.infer(oai_msgs, model, temp)
+            if isinstance(assistant_message, int):
+                error_embed = Embed(
+                    title="Error!",
+                    description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
+                    color=0xff0000
+                )
+                await message.channel.send(embed=error_embed)
+                return
 
-        if len(assistant_message) > 2000:
-            parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
-            for part in parts:
-                await message.channel.send(part)
-        else:
-            await message.channel.send(assistant_message)
+            if len(assistant_message) > 2000:
+                parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
+                for part in parts:
+                    await message.channel.send(part)
+            else:
+                await message.channel.send(assistant_message)
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
