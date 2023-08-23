@@ -9,7 +9,7 @@ class Chat(commands.Cog, name="chat"):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Catch a fish, make a wish, and swiftly respond to a dish... of messages, that is!"""
+        """Respond to messages."""
 
         if message.author == self.bot.user or message.guild is None or isinstance(message.channel, channel.DMChannel):
             return
@@ -17,21 +17,10 @@ class Chat(commands.Cog, name="chat"):
         selected_channel_ids = await db_manager.get_channels(str(message.guild.id))
         if str(message.channel.id) not in selected_channel_ids:
             return
-        
-        model = await db_manager.get_model(message.guild.id)
-        if model is None:
-            await db_manager.set_model(message.guild.id, "gpt-3.5-turbo-16k")
-            model = "gpt-3.5-turbo-16k"
 
-        temp = await db_manager.get_temperature(message.guild.id)
-        if temp is None:
-            await db_manager.set_temperature(message.guild.id, 0.5)
-            temp = 0.5
-
-        opt_status = await db_manager.get_opt(message.guild.id)
-        if opt_status is None:
-            await db_manager.opt_in(message.guild.id)
-            opt_status = True
+        model = await db_manager.get_model(message.guild.id) or "gpt-3.5-turbo-16k"
+        temp = await db_manager.get_temperature(message.guild.id) or 0.5
+        opt_status = await db_manager.get_opt(message.guild.id) or True
 
         if opt_status:
             await db_manager.add_message(message.guild.id, message.author.id, message.channel.id, message.content)
@@ -50,7 +39,6 @@ class Chat(commands.Cog, name="chat"):
             history.append(msg)
 
         oai_msgs = [{"role": "system", "content": await db_manager.get_instructions(message.guild.id)}]
-
         supported_filetypes = ["txt", "log", "py", "js", "json", "html", "css", "md", "csv", "tsv", "xml", "yaml", "yml", "ini", "cfg", "toml", "sh", "bat", "ps1", "psm1", "psd1", "ps1xml", "psc1", "pssc", "reg", "inf", "sql"]
 
         for msg in reversed(history):
@@ -84,7 +72,7 @@ class Chat(commands.Cog, name="chat"):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
-        """Send a welcome message when the bot joins a guild."""
+        """Welcome message when bot joins a guild."""
         message_embed = Embed(
             title="Welcome to Osiris!",
             description="To get started, use the `/osiris channel add` command in the channel you want Osiris to speak in.",

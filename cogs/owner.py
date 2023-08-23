@@ -1,11 +1,3 @@
-""""
-Copyright © Krypton 2019-2023 - https://github.com/kkrypt0nn (https://krypton.ninja)
-Description:
-🐍 A simple template to start to code your own and personalized discord bot in Python programming language.
-
-Version: 5.5.0
-"""
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -14,163 +6,91 @@ from discord.ext.commands import Context
 from helpers import checks, db_manager
 
 
-class Owner(commands.Cog, name="owner"):
+class OzAdmin(commands.Cog, name="ozadmin"):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(
-        name="sync",
-        description="Synchonizes the slash commands.",
-    )
-    @app_commands.describe(scope="The scope of the sync. Can be `global` or `guild`")
+    # Some sync magic for you and your bot. Now serving with a smile!
+    @commands.command(description="Sync or unsync the slash commands.")
+    @app_commands.describe(scope="The scope of the sync. Can be `global` or `guild`.")
     @checks.is_owner()
-    async def sync(self, context: Context, scope: str) -> None:
+    async def sync(self, context: Context, action: str, scope: str) -> None:
         """
-        Synchonizes the slash commands.
+        Sync or unsync the slash commands.
 
         :param context: The command context.
-        :param scope: The scope of the sync. Can be `global` or `guild`.
+        :param action: 'sync' or 'unsync' the commands.
+        :param scope: The scope of the sync. Can be 'global' or 'guild'.
         """
+        if action not in ['sync', 'unsync']:
+            embed = discord.Embed(description="Action must be 'sync' or 'unsync'.", color=0xE02B2B)
+            await context.send(embed=embed)
+            return
 
-        if scope == "global":
-            await context.bot.tree.sync()
-            embed = discord.Embed(
-                description="Slash commands have been globally synchronized.",
-                color=0x9C84EF,
-            )
+        if scope not in ['global', 'guild']:
+            embed = discord.Embed(description="Scope must be 'global' or 'guild'.", color=0xE02B2B)
             await context.send(embed=embed)
             return
-        elif scope == "guild":
-            context.bot.tree.copy_global_to(guild=context.guild)
-            await context.bot.tree.sync(guild=context.guild)
-            embed = discord.Embed(
-                description="Slash commands have been synchronized in this guild.",
-                color=0x9C84EF,
-            )
-            await context.send(embed=embed)
-            return
-        embed = discord.Embed(
-            description="The scope must be `global` or `guild`.", color=0xE02B2B
-        )
+
+        if action == 'sync':
+            target_func = context.bot.tree.sync
+        else:
+            target_func = context.bot.tree.clear_commands
+
+        if scope == 'global':
+            await target_func(guild=None)
+        else:
+            await target_func(guild=context.guild)
+
+        description = f"Slash commands have been {action}ed globally." if scope == 'global' else f"Slash commands have been {action}ed in this guild."
+        embed = discord.Embed(description=description, color=0x9C84EF)
         await context.send(embed=embed)
 
-    @commands.command(
-        name="unsync",
-        description="Unsynchonizes the slash commands.",
-    )
-    @app_commands.describe(
-        scope="The scope of the sync. Can be `global`, `current_guild` or `guild`"
+    # The cog love, load, unload, and reload. Feels like a laundry day, doesn't it?
+    @commands.hybrid_group(
+        name="cog",
+        description="Cog management commands.",
     )
     @checks.is_owner()
-    async def unsync(self, context: Context, scope: str) -> None:
+    async def cog(self, context: Context, action: str, cog_name: str) -> None:
         """
-        Unsynchonizes the slash commands.
-
-        :param context: The command context.
-        :param scope: The scope of the sync. Can be `global`, `current_guild` or `guild`.
-        """
-
-        if scope == "global":
-            context.bot.tree.clear_commands(guild=None)
-            await context.bot.tree.sync()
-            embed = discord.Embed(
-                description="Slash commands have been globally unsynchronized.",
-                color=0x9C84EF,
-            )
-            await context.send(embed=embed)
-            return
-        elif scope == "guild":
-            context.bot.tree.clear_commands(guild=context.guild)
-            await context.bot.tree.sync(guild=context.guild)
-            embed = discord.Embed(
-                description="Slash commands have been unsynchronized in this guild.",
-                color=0x9C84EF,
-            )
-            await context.send(embed=embed)
-            return
-        embed = discord.Embed(
-            description="The scope must be `global` or `guild`.", color=0xE02B2B
-        )
-        await context.send(embed=embed)
-
-    @commands.hybrid_command(
-        name="load",
-        description="Load a cog",
-    )
-    @app_commands.describe(cog="The name of the cog to load")
-    @checks.is_owner()
-    async def load(self, context: Context, cog: str) -> None:
-        """
-        The bot will load the given cog.
+        Manage cogs: load, unload, reload.
 
         :param context: The hybrid command context.
-        :param cog: The name of the cog to load.
+        :param action: The action to perform (load, unload, reload).
+        :param cog_name: The name of the cog.
         """
+        action_map = {"load": "loaded", "unload": "unloaded", "reload": "reloaded"}
         try:
-            await self.bot.load_extension(f"cogs.{cog}")
+            method = getattr(self.bot, f"{action}_extension")
+            method(f"cogs.{cog_name}")
+            embed = discord.Embed(description=f"Successfully {action_map[action]} the `{cog_name}` cog.", color=0x9C84EF)
         except Exception:
-            embed = discord.Embed(
-                description=f"Could not load the `{cog}` cog.", color=0xE02B2B
-            )
-            await context.send(embed=embed)
-            return
-        embed = discord.Embed(
-            description=f"Successfully loaded the `{cog}` cog.", color=0x9C84EF
-        )
+            embed = discord.Embed(description=f"Could not {action} the `{cog_name}` cog.", color=0xE02B2B)
         await context.send(embed=embed)
 
-    @commands.hybrid_command(
-        name="unload",
-        description="Unloads a cog.",
+    # Bot wants to talk? Let's make it talk! Or shout within an embed, just for fun!
+    @commands.hybrid_group(
+        name="say",
+        description="The bot will say anything you want, plain or in an embed!",
     )
-    @app_commands.describe(cog="The name of the cog to unload")
+    @app_commands.describe(message="The message that should be repeated by the bot.")
     @checks.is_owner()
-    async def unload(self, context: Context, cog: str) -> None:
+    async def say(self, context: Context, *, message: str, in_embed: bool = False) -> None:
         """
-        The bot will unload the given cog.
+        The bot will say anything you want.
 
         :param context: The hybrid command context.
-        :param cog: The name of the cog to unload.
+        :param message: The message that should be repeated by the bot.
+        :param in_embed: Whether to send the message within an embed.
         """
-        try:
-            await self.bot.unload_extension(f"cogs.{cog}")
-        except Exception:
-            embed = discord.Embed(
-                description=f"Could not unload the `{cog}` cog.", color=0xE02B2B
-            )
+        if in_embed:
+            embed = discord.Embed(description=message, color=0x9C84EF)
             await context.send(embed=embed)
-            return
-        embed = discord.Embed(
-            description=f"Successfully unloaded the `{cog}` cog.", color=0x9C84EF
-        )
-        await context.send(embed=embed)
+        else:
+            await context.send(message)
 
-    @commands.hybrid_command(
-        name="reload",
-        description="Reloads a cog.",
-    )
-    @app_commands.describe(cog="The name of the cog to reload")
-    @checks.is_owner()
-    async def reload(self, context: Context, cog: str) -> None:
-        """
-        The bot will reload the given cog.
-
-        :param context: The hybrid command context.
-        :param cog: The name of the cog to reload.
-        """
-        try:
-            await self.bot.reload_extension(f"cogs.{cog}")
-        except Exception:
-            embed = discord.Embed(
-                description=f"Could not reload the `{cog}` cog.", color=0xE02B2B
-            )
-            await context.send(embed=embed)
-            return
-        embed = discord.Embed(
-            description=f"Successfully reloaded the `{cog}` cog.", color=0x9C84EF
-        )
-        await context.send(embed=embed)
-
+    # The dreaded shutdown command. Farewell, dear bot. Until next time!
     @commands.hybrid_command(
         name="shutdown",
         description="Make the bot shutdown.",
@@ -186,148 +106,39 @@ class Owner(commands.Cog, name="owner"):
         await context.send(embed=embed)
         await self.bot.close()
 
-    @commands.hybrid_command(
-        name="say",
-        description="The bot will say anything you want.",
-    )
-    @app_commands.describe(message="The message that should be repeated by the bot")
-    @checks.is_owner()
-    async def say(self, context: Context, *, message: str) -> None:
-        """
-        The bot will say anything you want.
-
-        :param context: The hybrid command context.
-        :param message: The message that should be repeated by the bot.
-        """
-        await context.send(message)
-
-    @commands.hybrid_command(
-        name="embed",
-        description="The bot will say anything you want, but within embeds.",
-    )
-    @app_commands.describe(message="The message that should be repeated by the bot")
-    @checks.is_owner()
-    async def embed(self, context: Context, *, message: str) -> None:
-        """
-        The bot will say anything you want, but using embeds.
-
-        :param context: The hybrid command context.
-        :param message: The message that should be repeated by the bot.
-        """
-        embed = discord.Embed(description=message, color=0x9C84EF)
-        await context.send(embed=embed)
-
+    # All the blacklist magic in one place. Add, remove, show - your bot, your rules!
     @commands.hybrid_group(
         name="blacklist",
         description="Get the list of all blacklisted users.",
     )
     @checks.is_owner()
-    async def blacklist(self, context: Context) -> None:
+    async def blacklist(self, context: Context, action: str, user: discord.User = None) -> None:
         """
-        Lets you add or remove a user from not being able to use the bot.
+        Lets you add, remove, or show blacklisted users.
 
         :param context: The hybrid command context.
+        :param action: 'add', 'remove', or 'show' blacklisted users.
+        :param user: The user to be added or removed from the blacklist.
         """
-        if context.invoked_subcommand is None:
-            embed = discord.Embed(
-                description="You need to specify a subcommand.\n\n**Subcommands:**\n`add` - Add a user to the blacklist.\n`remove` - Remove a user from the blacklist.",
-                color=0xE02B2B,
-            )
-            await context.send(embed=embed)
-
-    @blacklist.command(
-        base="blacklist",
-        name="show",
-        description="Shows the list of all blacklisted users.",
-    )
-    @checks.is_owner()
-    async def blacklist_show(self, context: Context) -> None:
-        """
-        Shows the list of all blacklisted users.
-
-        :param context: The hybrid command context.
-        """
-        blacklisted_users = await db_manager.get_blacklisted_users()
-        if len(blacklisted_users) == 0:
-            embed = discord.Embed(
-                description="There are currently no blacklisted users.", color=0xE02B2B
-            )
+        if action not in ['add', 'remove', 'show']:
+            embed = discord.Embed(description="Action must be 'add', 'remove', or 'show'.", color=0xE02B2B)
             await context.send(embed=embed)
             return
 
-        embed = discord.Embed(title="Blacklisted Users", color=0x9C84EF)
-        users = []
-        for bluser in blacklisted_users:
-            user = self.bot.get_user(int(bluser[0])) or await self.bot.fetch_user(
-                int(bluser[0])
-            )
-            users.append(f"• {user.mention} ({user}) - Blacklisted <t:{bluser[1]}>")
-        embed.description = "\n".join(users)
-        await context.send(embed=embed)
-
-    @blacklist.command(
-        base="blacklist",
-        name="add",
-        description="Lets you add a user from not being able to use the bot.",
-    )
-    @app_commands.describe(user="The user that should be added to the blacklist")
-    @checks.is_owner()
-    async def blacklist_add(self, context: Context, user: discord.User) -> None:
-        """
-        Lets you add a user from not being able to use the bot.
-
-        :param context: The hybrid command context.
-        :param user: The user that should be added to the blacklist.
-        """
-        user_id = user.id
-        if await db_manager.is_blacklisted(user_id):
-            embed = discord.Embed(
-                description=f"**{user.name}** is already in the blacklist.",
-                color=0xE02B2B,
-            )
+        if action == 'show':
+            blacklisted_users = await db_manager.get_blacklist()
+            description = '\n'.join([f"{usr.id} - {usr.name}#{usr.discriminator}" for usr in blacklisted_users])
+            embed = discord.Embed(title="Blacklisted Users", description=description, color=0x9C84EF)
             await context.send(embed=embed)
-            return
-        total = await db_manager.add_user_to_blacklist(user_id)
-        embed = discord.Embed(
-            description=f"**{user.name}** has been successfully added to the blacklist",
-            color=0x9C84EF,
-        )
-        embed.set_footer(
-            text=f"There {'is' if total == 1 else 'are'} now {total} {'user' if total == 1 else 'users'} in the blacklist"
-        )
-        await context.send(embed=embed)
-
-    @blacklist.command(
-        base="blacklist",
-        name="remove",
-        description="Lets you remove a user from not being able to use the bot.",
-    )
-    @app_commands.describe(user="The user that should be removed from the blacklist.")
-    @checks.is_owner()
-    async def blacklist_remove(self, context: Context, user: discord.User) -> None:
-        """
-        Lets you remove a user from not being able to use the bot.
-
-        :param context: The hybrid command context.
-        :param user: The user that should be removed from the blacklist.
-        """
-        user_id = user.id
-        if not await db_manager.is_blacklisted(user_id):
-            embed = discord.Embed(
-                description=f"**{user.name}** is not in the blacklist.", color=0xE02B2B
-            )
+        elif action == 'add' and user:
+            await db_manager.add_to_blacklist(user)
+            embed = discord.Embed(description=f"{user.mention} has been added to the blacklist.", color=0x9C84EF)
             await context.send(embed=embed)
-            return
-        total = await db_manager.remove_user_from_blacklist(user_id)
-        embed = discord.Embed(
-            description=f"**{user.name}** has been successfully removed from the blacklist",
-            color=0x9C84EF,
-        )
-        embed.set_footer(
-            text=f"There {'is' if total == 1 else 'are'} now {total} {'user' if total == 1 else 'users'} in the blacklist"
-        )
-        await context.send(embed=embed)
+        elif action == 'remove' and user:
+            await db_manager.remove_from_blacklist(user)
+            embed = discord.Embed(description=f"{user.mention} has been removed from the blacklist.", color=0x9C84EF)
+            await context.send(embed=embed)
 
 
-async def setup(bot):
-    await bot.add_cog(Owner(bot))
+def setup(bot):
+    bot.add_cog(OzAdmin(bot))
