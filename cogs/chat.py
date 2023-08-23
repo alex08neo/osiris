@@ -62,6 +62,8 @@ class Chat(commands.Cog, name="chat"):
                 description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
                 color=0xff0000
             )
+            await message.channel.send(embed=error_embed)
+            return
 
         if len(assistant_message) > 2000:
             parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
