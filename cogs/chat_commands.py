@@ -35,27 +35,44 @@ class ChatCommands(commands.Cog, name="chat_commands"):
     @checks.not_blacklisted()
     async def channel_add(self, context: Context, channel: TextChannel=None):
         channel = channel or context.channel
+
+        existing_channels = await db_manager.get_channels(str(context.guild.id))
+
+        if str(channel.id) in existing_channels:
+            await context.send(f"Channel already added: {channel.mention}. No changes made.", ephemeral=True)
+            return
+
         await db_manager.add_channel(str(context.guild.id), channel.id)
-        await context.send(f"Channel added: {channel.mention}")
+        await context.send(f"Channel added: {channel.mention}", ephemeral=True)
 
     @channel.command(name="remove", description="Remove a channel where the bot speaks.")
     @checks.is_server_admin()
     @checks.not_blacklisted()
     async def channel_remove(self, context: Context, channel: TextChannel=None):
         channel = channel or context.channel
+
+        existing_channels = await db_manager.get_channels(str(context.guild.id))
+
+        if str(channel.id) not in existing_channels:
+            await context.send(f"Channel not found: {channel.mention}. How do you remove something that was never there? 🤔", ephemeral=True)
+            return
+
         await db_manager.remove_channel(str(context.guild.id), channel.id)
-        await context.send(f"Channel removed: {channel.mention}")
+        await context.send(f"Channel removed: {channel.mention}", ephemeral=True)
 
     @channel.command(name="list", description="List the channels where the bot speaks.")
     @checks.is_server_admin()
     @checks.not_blacklisted()
     async def channel_list(self, context: Context):
         channels = await db_manager.get_channels(str(context.guild.id))
+        
         if channels is None or all(c is None for c in channels):
             await context.send("No channels set.", ephemeral=True)
             return
+    
         channel_mentions = [context.guild.get_channel(int(channel_id)).mention for channel_id in channels if channel_id != '']
-        await context.send(f"Channels where I can speak: {', '.join(channel_mentions)}")
+        channel_mentions_str = '\n'.join(channel_mentions)
+        await context.send(f"Channels where I can speak: {channel_mentions_str}", ephemeral=True)
 
     @osiris.command(name="new", description="Start a new conversation.")
     @checks.not_blacklisted()
