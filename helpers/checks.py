@@ -1,58 +1,30 @@
-""""
-Copyright © Krypton 2019-2023 - https://github.com/kkrypt0nn (https://krypton.ninja)
-Description:
-🐍 A simple template to start to code your own and personalized discord bot in Python programming language.
-
-Version: 5.5.0
-"""
-
-import json
-import os
 from typing import Callable, TypeVar
 from discord.ext import commands
-from exceptions import *
+from exceptions import UserNotOwner, UserNotServerAdmin, UserBlacklisted
 from helpers import db_manager
+import json
+import os
 
 T = TypeVar("T")
 
-
 def is_owner() -> Callable[[T], T]:
-    """
-    This is a custom check to see if the user executing the command is an owner of the bot.
-    """
-
     async def predicate(context: commands.Context) -> bool:
-        with open(
-            f"{os.path.realpath(os.path.dirname(__file__))}/../config.json"
-        ) as file:
-            data = json.load(file)
-        if context.author.id not in data["owners"]:
-            raise UserNotOwner
+        with open(f"{os.path.dirname(__file__)}/../config.json") as file:
+            if context.author.id not in json.load(file)["owners"]:
+                raise UserNotOwner
         return True
-
     return commands.check(predicate)
 
 def is_server_admin() -> Callable[[T], T]:
-    """
-    This is a custom check to see if the user executing the command is an admin of the server.
-    """
-
     async def predicate(context: commands.Context) -> bool:
-        # we'll also make bot owners server admins for the purposes of this check
         if context.author.guild_permissions.administrator or context.author.id in context.bot.config["owners"]:
             return True
         raise UserNotServerAdmin
-
     return commands.check(predicate)
 
 def not_blacklisted() -> Callable[[T], T]:
-    """
-    This is a custom check to see if the user executing the command is blacklisted.
-    """
-
     async def predicate(context: commands.Context) -> bool:
         if await db_manager.is_blacklisted(context.author.id):
             raise UserBlacklisted
         return True
-
     return commands.check(predicate)

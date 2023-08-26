@@ -1,7 +1,7 @@
 from discord.ext import commands
 from helpers import db_manager, oai_helper
 from discord import channel, Embed
-import re
+import re, json, os, random
 
 class Chat(commands.Cog, name="chat"):
     def __init__(self, bot):
@@ -9,7 +9,7 @@ class Chat(commands.Cog, name="chat"):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Catch a fish, make a wish, and swiftly respond to a dish... of messages, that is!"""
+        """Respond to messages."""
 
         if message.author == self.bot.user or message.guild is None or isinstance(message.channel, channel.DMChannel):
             return
@@ -17,21 +17,10 @@ class Chat(commands.Cog, name="chat"):
         selected_channel_ids = await db_manager.get_channels(str(message.guild.id))
         if str(message.channel.id) not in selected_channel_ids:
             return
-        
-        model = await db_manager.get_model(message.guild.id)
-        if model is None:
-            await db_manager.set_model(message.guild.id, "gpt-3.5-turbo-16k")
-            model = "gpt-3.5-turbo-16k"
 
-        temp = await db_manager.get_temperature(message.guild.id)
-        if temp is None:
-            await db_manager.set_temperature(message.guild.id, 0.5)
-            temp = 0.5
-
-        opt_status = await db_manager.get_opt(message.guild.id)
-        if opt_status is None:
-            await db_manager.opt_in(message.guild.id)
-            opt_status = True
+        model = await db_manager.get_model(message.guild.id) or "gpt-3.5-turbo-16k"
+        temp = await db_manager.get_temperature(message.guild.id) or 0.5
+        opt_status = await db_manager.get_opt(message.guild.id) or True
 
         if opt_status:
             await db_manager.add_message(message.guild.id, message.author.id, message.channel.id, message.content)
@@ -50,7 +39,6 @@ class Chat(commands.Cog, name="chat"):
             history.append(msg)
 
         oai_msgs = [{"role": "system", "content": await db_manager.get_instructions(message.guild.id)}]
-
         supported_filetypes = ["txt", "log", "py", "js", "json", "html", "css", "md", "csv", "tsv", "xml", "yaml", "yml", "ini", "cfg", "toml", "sh", "bat", "ps1", "psm1", "psd1", "ps1xml", "psc1", "pssc", "reg", "inf", "sql"]
 
         for msg in reversed(history):
@@ -67,24 +55,40 @@ class Chat(commands.Cog, name="chat"):
                         user_content += "\n\n" + attachment.filename + ":\n```\n" + attachment_content + "\n```"
             oai_msgs.append({"role": role, "content": user_content, "name": name})
 
-        assistant_message = await oai_helper.infer(oai_msgs, model, temp)
-        if isinstance(assistant_message, int):
-            error_embed = Embed(
-                title="Error!",
-                description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
-                color=0xff0000
-            )
+        with open(f"{os.path.realpath(os.path.dirname(__file__))}/../config.json") as file:
+            data = json.load(file)
 
-        if len(assistant_message) > 2000:
-            parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
-            for part in parts:
-                await message.channel.send(part)
+        if "," in data["openai_api_key"]:
+            API_KEY = data["openai_api_key"].split(",")
         else:
-            await message.channel.send(assistant_message)
+            API_KEY = data["openai_api_key"]
+
+
+        API_KEY = random.choice(API_KEY) if isinstance(API_KEY, list) else API_KEY
+
+        async with message.channel.typing():
+            assistant_message = await oai_helper.infer(oai_msgs, model, temp, API_KEY)
+            
+            if isinstance(assistant_message, int):
+                error_embed = Embed(
+                    title="Error!",
+                    description=f"An error occurred while trying to generate a response. Please try again later. Error code {str(assistant_message)}",
+                    color=0xff0000
+                )
+                await message.channel.send(embed=error_embed)
+                return
+
+            if len(assistant_message) > 2000:
+                parts = [assistant_message[i:i+2000] for i in range(0, len(assistant_message), 2000)]
+                for part in parts:
+                    await message.channel.send(part)
+            else:
+                await message.channel.send(assistant_message)
+
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
-        """Send a welcome message when the bot joins a guild."""
+        """Welcome message when bot joins a guild."""
         message_embed = Embed(
             title="Welcome to Osiris!",
             description="To get started, use the `/osiris channel add` command in the channel you want Osiris to speak in.",

@@ -1,25 +1,32 @@
 import aiohttp
 import os
-import json
-import random
-
-with open(f"{os.path.realpath(os.path.dirname(__file__))}/../config.json") as file:
-    data = json.load(file)
-
-if "," in data["openai_api_key"]:
-    API_KEY = data["openai_api_key"].split(",")
-else:
-    API_KEY = data["openai_api_key"]
-
 
 API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 
-async def infer(messages: list, model: str, temp: float):
-    API_KEY = random.choice(API_KEY) if isinstance(API_KEY, list) else API_KEY
+async def infer(messages: list, model: str, temp: float, API_KEY: str):
+
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {API_KEY}'
     }
+
+    # first we moderate the messages
+    messages_soup = ""
+    for message in messages:
+        messages_soup += f"{message}\n"
+
+    url = f"{API_BASE}/moderations"
+    payload = {
+        'data': messages_soup
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as response:
+            if response.status == 200:
+                response_data = await response.json()
+                if response_data['results'][0]['flagged']:
+                    return 403
+
     url = f"{API_BASE}/chat/completions"
     payload = {
         'model': model,
