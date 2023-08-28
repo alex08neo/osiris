@@ -34,16 +34,19 @@ class ChatCommands(commands.Cog, name="chat_commands"):
     @checks.is_server_admin()
     @checks.not_blacklisted()
     async def channel_add(self, context: Context, channel: TextChannel=None):
-        channel = channel or context.channel
+        try:
+            channel = channel or context.channel
 
-        existing_channels = await db_manager.get_channels(str(context.guild.id))
+            existing_channels = await db_manager.get_channels(str(context.guild.id))
 
-        if str(channel.id) in existing_channels:
-            await context.send(f"Channel already added: {channel.mention}. No changes made.", ephemeral=True)
-            return
+            if existing_channels is None or all(c is None for c in existing_channels) or str(channel.id) not in existing_channels:
+                await db_manager.add_channel(str(context.guild.id), channel.id)
+                await context.send(f"Channel added: {channel.mention}", ephemeral=True)
+            else:
+                await context.send(f"Channel already added: {channel.mention}", ephemeral=True)
 
-        await db_manager.add_channel(str(context.guild.id), channel.id)
-        await context.send(f"Channel added: {channel.mention}", ephemeral=True)
+        except Exception as e:
+            await context.send(f"Error occurred while adding channel: {e}", ephemeral=True)
 
     @channel.command(name="remove", description="Remove a channel where the bot speaks.")
     @checks.is_server_admin()
@@ -52,6 +55,10 @@ class ChatCommands(commands.Cog, name="chat_commands"):
         channel = channel or context.channel
 
         existing_channels = await db_manager.get_channels(str(context.guild.id))
+
+        if existing_channels is None or all(c is None for c in existing_channels):
+            await context.send("No channels set.", ephemeral=True)
+            return
 
         if str(channel.id) not in existing_channels:
             await context.send(f"Channel not found: {channel.mention}. How do you remove something that was never there? 🤔", ephemeral=True)

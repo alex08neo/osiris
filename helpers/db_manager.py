@@ -76,6 +76,22 @@ async def get_channels(guild_id: int) -> list:
             result = await cursor.fetchone()
             return result[0].split(',') if result and result[0] else None
 
+async def is_guild_in_db(guild_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT * FROM guilds WHERE guild_id=?", (str(guild_id),)) as cursor:
+            result = await cursor.fetchone()
+            return result is not None
+        
+async def add_guild(guild_id: int) -> None:
+    """
+    Adds a guild to the database.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT INTO guilds(guild_id) VALUES (?)",
+            (guild_id,),
+        )
+        await db.commit()
 
 async def set_model(guild_id: int, model: str) -> None:
     """

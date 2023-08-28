@@ -5,6 +5,7 @@ import os
 import platform
 import random
 import sys
+from helpers import db_manager
 
 import aiosqlite
 import discord
@@ -69,7 +70,18 @@ async def on_ready():
     if config["sync_commands_globally"]:
         bot.logger.info("Syncing commands globally...")
         await bot.tree.sync()
-
+    for guild in bot.guilds:
+        try:
+            if not await db_manager.is_guild_in_db(guild.id):
+                try:
+                    await db_manager.add_guild(guild.id)
+                    bot.logger.info(f"Added guild {guild.name} (ID: {guild.id}) to the database.")
+                except Exception as e:
+                    bot.logger.error(f"Failed to add guild {guild.name} (ID: {guild.id}) to the database: {type(e).__name__}: {e}")
+            else:
+                bot.logger.info(f"Guild {guild.name} (ID: {guild.id}) is already in the database.")
+        except Exception as e:
+            bot.logger.error(f"Failed to check if guild {guild.name} (ID: {guild.id}) is in the database: {type(e).__name__}: {e}")
 
 @tasks.loop(minutes=1.0)
 async def status_task():
@@ -116,6 +128,9 @@ async def on_command_error(context: Context, error):
             bot.logger.warning(f"{context.author} (ID: {context.author.id}) tried to execute an owner only command in the guild {context.guild.name} (ID: {context.guild.id}), but the user is not an owner of the bot.")
         else:
             bot.logger.warning(f"{context.author} (ID: {context.author.id}) tried to execute an owner only command in the bot's DMs, but the user is not an owner of the bot.")
+    elif isinstance(error, exceptions.UserNotServerAdmin):
+        embed = discord.Embed(description="You are not an admin of the server!", color=0xE02B2B)
+        await context.send(embed=embed)
     elif isinstance(error, commands.MissingPermissions):
         embed = discord.Embed(description="You are missing the permission(s) `" + ", ".join(error.missing_permissions) + "` to execute this command!", color=0xE02B2B,)
         await context.send(embed=embed)
